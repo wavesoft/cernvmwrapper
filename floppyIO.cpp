@@ -83,7 +83,7 @@ FloppyIO::FloppyIO(const char * filename, int flags) {
     
   // Open file
   ios_base::openmode fOpenFlags = fstream::in | fstream::out;
-  if ((flags & F_NOCREATE) == 0) fOpenFlags = fstream::trunc;
+  if ((flags & F_NOCREATE) == 0) fOpenFlags |= fstream::trunc;
   fstream *fIO = new fstream(filename, fOpenFlags);
   
   // Check for errors while F_NOCREATE is there
@@ -111,8 +111,6 @@ FloppyIO::FloppyIO(const char * filename, int flags) {
 
       // Check for failures on open
       if ( (fIO->rdstate() & ifstream::failbit ) != 0 ) {
-
-
         
       }
 
@@ -171,12 +169,13 @@ int FloppyIO::send(string strData) {
     // Initialize variables
     int szData = strData.length();
     int szPad = 0;
-    int bytesSent = 0;
+    int bytesSent = szData;
     
     // Copy the first szInput bytes
     if (szData > this->szOutput-1) { // -1 for the null-termination
         // Data more than the pad size? Trim...
         strData.copy(dataToSend, this->szOutput-1, 0);
+        bytesSent = this->szOutput-1;
     } else {
         // Else, copy the string to send buffer
         strData.copy(dataToSend, szData, 0);
@@ -187,7 +186,7 @@ int FloppyIO::send(string strData) {
     
     // Write the data to file
     this->fIO->seekp(this->ofsOutput);
-    bytesSent = this->fIO->write(dataToSend, this->szOutput);
+    this->fIO->write(dataToSend, this->szOutput);
     
     // Check if something went wrong after writing
     if (!this->fIO->good()) return -1;
@@ -201,15 +200,34 @@ int FloppyIO::send(string strData) {
     
 }
 
-
+//
 // Receive the input buffer contents
-// @return Returns a string object with the file contents
-
+//
+// @return  Returns a string object with the buffer contents
+//
 string FloppyIO::receive() {
     static string ansBuffer;
+    receive(&ansBuffer);
+    return ansBuffer;
+}
+
+//
+// Receive the input buffer contents
+//
+// @param string   A pointer to a string object that will receive the data
+// @return         Returns the length of the data received or -1 if an error occured.
+//
+int FloppyIO::receive(string * ansBuffer) {
     char * dataToReceive = new char[this->szInput];
     int dataLength = this->szInput;
     
+    // Check for stream status
+    if (!this->fIO->good()) return -1;
+    
+    // Read the input bytes from FD
+    this->fIO->seekg(this->ofsInput, ios_base::beg);
+    this->fIO->read(dataToReceive, this->szInput);
+
     // Find the size of the input string
     for (int i=0; i<this->szInput; i++) {
         if (dataToReceive[0] == '\0') {
@@ -218,17 +236,13 @@ string FloppyIO::receive() {
         }
     }
     
-    // Read the input bytes from FD
-    this->fIO->seekg(this->ofsInput, ios_base::beg);
-    this->fIO->read(dataToReceive, this->szInput);
-    
     // Notify the client that we have read the data
     this->fIO->seekp(this->ofsCtrlByteIn);
     this->fIO->write("\x00", 1);
     
     // Copy input data to string object
-    ansBuffer = dataToReceive;
-    return ansBuffer;
+    *ansBuffer = dataToReceive;
+    return dataLength;
     
 }
 
@@ -255,7 +269,7 @@ int  FloppyIO::waitForSync(int controlByteOffset, int timeout) {
         this->fIO->read(&cStatusByte, 1);
 
         // Is the control byte 0? Our job is finished...
-        if (cStatusByte == "\x00") return 0;
+        if (cStatusByte == 0) return 0;
     }
 
     // If we reached this point, we timed out

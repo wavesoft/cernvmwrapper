@@ -46,29 +46,39 @@
 
 using namespace std;
 
-
 // Do not initialize (reset) floppy disk image at open.
-// (Flag used at FloppyIO constructor)
-
+// (Flag used by the FloppyIO constructor)
 #define F_NOINIT 1
 
-
 // Do not create the filename (assume it exists)
-// (Flag used at FloppyIO constructor)
-
+// (Flag used by the FloppyIO constructor)
 #define F_NOCREATE 2
 
-
-// Synchronize I/O [NOT YET IMPLEMENTED]
+// Synchronize I/O.
 // This flag will block the script until the guest has read/written the data.
-// (Flag used at FloppyIO constructor)
-
+// (Flag used by the FloppyIO constructor)
 #define F_SYNCHRONIZED 4
 
 // Use exceptions instead of error codes
-// (Flag used at FloppyIO constructor)
-
+// (Flag used by the FloppyIO constructor)
 #define F_EXCEPTIONS 8
+
+//
+// Structure of the synchronization control byte.
+//
+// This byte usually resides at the beginning of the
+// floppy file for the receive buffer and at the end
+// of the file for the sending buffer.
+//
+// It's purpose is to force the entire floppy image
+// to be re-written/re-read by the hypervisor/guest OS and
+// to synchronize the I/O in case of large ammount of
+// data being exchanged.
+//
+typedef struct fpio_ctlbyte {
+    unsigned short bDataPresent  : 1;
+    unsigned short bReserved     : 7;
+};
 
 // Default floppy disk size (In bytes)
 // 
@@ -90,8 +100,9 @@ public:
     
     // Functions
     void        reset();
-    void        send(string strData);
+    int         send(string strData);
     string      receive();
+    int         receive(string * strBuffer);
     
     // Topology info
     int     ofsInput;   // Input buffer offset & size
@@ -110,6 +121,9 @@ private:
     // Floppy Info
     fstream * fIO;
     int     szFloppy;
+
+    // Functions
+    int     waitForSync(int controlByteOffset, int timeout);
     
 };
 
