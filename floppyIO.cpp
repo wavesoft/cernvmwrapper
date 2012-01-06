@@ -1,5 +1,22 @@
+// This file is part Floppy I/O, a Virtual Machine - Hypervisor intercommunication system.
+// Copyright (C) 2011 Ioannis Charalampidis 
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Lesser General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU Lesser General Public License for more details.
+//
+// You should have received a copy of the GNU Lesser General Public License
+// along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
 // File:   FloppyIO.cpp
 // Author: Ioannis Charalampidis <ioannis.charalampidis AT cern DOT ch>
+// License: GNU Lesser General Public License - Version 3.0
 //
 // Hypervisor-Virtual machine bi-directional communication
 // through floppy disk.
@@ -17,7 +34,7 @@
 // |     0x7000      |  "Data available for hypervisor" flag byte     |
 // +-----------------+------------------------------------------------+
 // 
-// Created on November 24, 2011, 12:30 PM
+// Updated at January 5, 2012, 13:06 PM
 
 #include "floppyIO.h"
 
@@ -33,7 +50,7 @@ FloppyIO::FloppyIO(const char * filename) {
     
   // Open file
   fstream *fIO = new fstream(filename, fstream::in | fstream::out | fstream::trunc);
-  
+
   // Prepare floppy info
   this->fIO = fIO;
   this->szFloppy = DEFAULT_FLOPPY_SIZE;
@@ -131,10 +148,13 @@ void FloppyIO::reset() {
   delete[] buffer;      
 }
 
+
 // Send data to the floppy image I/O
-// @param data
-// @return 
-void FloppyIO::send(string strData) {
+//
+// @param strData   The string to send
+// @return          The number of bytes sent
+//
+int FloppyIO::send(string strData) {
     // Prepare send buffer
     char * dataToSend = new char[this->szOutput];
     memset(dataToSend, 0, this->szOutput);
@@ -142,9 +162,10 @@ void FloppyIO::send(string strData) {
     // Initialize variables
     int szData = strData.length();
     int szPad = 0;
+    int bytesSent = 0;
     
     // Copy the first szInput bytes
-    if (szData > this->szOutput-1) {
+    if (szData > this->szOutput-1) { // -1 for the null-termination
         // Data more than the pad size? Trim...
         strData.copy(dataToSend, this->szOutput-1, 0);
     } else {
@@ -154,11 +175,14 @@ void FloppyIO::send(string strData) {
     
     // Write the data to file
     this->fIO->seekp(this->ofsOutput);
-    this->fIO->write(dataToSend, this->szOutput);
+    bytesSent = this->fIO->write(dataToSend, this->szOutput);
     
     // Notify the client that we placed data (Client should clear this on read)
     this->fIO->seekp(this->ofsCtrlByteOut);
     this->fIO->write("\x01", 1);
+
+    // Return number of bytes sent
+    return bytesSent;
     
 }
 
