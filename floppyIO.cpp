@@ -37,6 +37,11 @@
 // Updated at January 5, 2012, 13:06 PM
 
 #include "floppyIO.h"
+#include <typeinfo>
+#include <string.h>
+
+// FloppyIO Exception singleton
+static FloppyIOException   __FloppyIOExceptionSingleton;
 
 // Advanced Floppy file constructor
 // 
@@ -324,7 +329,7 @@ int  FloppyIO::setError(int code, const string message) {
 
     // Should we raise an exception?
     if (this->useExceptions) 
-        throw new FloppyIOException(code, message);
+        throw *__FloppyIOExceptionSingleton.set(code, message);
 
     // Otherwise return code
     // (Useful for using single-lined: return this->setError(-1, "message..');

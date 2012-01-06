@@ -43,7 +43,6 @@
 #include <iostream>
 #include <sstream>
 #include <fstream>
-#include <string.h>
 
 using namespace std;
 
@@ -167,29 +166,8 @@ public:
     int         code;
     string      message;
 
-    //
-    // Exception constructor
-    // @param code      The error code
-    // @param message   The error message
-    //
-    FloppyIOException(int code, string message) { 
-        this->message = message;
-        this->code = code;
-    };
-
-    //
-    // Exception constructor with nested exception support
-    // @param code      The error code
-    // @param message   The error message
-    // @param exception The parent exception that caused this one
-    //
-    FloppyIOException(int code, string message, const exception&) { 
-        exception::exception(exception);
-        this->message = message;
-        this->code = code;
-    };
-
-    // Destructor
+    // Default constructor/destructor
+    FloppyIOException() { this->code=0; this->message=""; };
     virtual ~FloppyIOException() throw() { };
 
     // Get description
@@ -197,6 +175,14 @@ public:
         static ostringstream oss (ostringstream::out);
         oss << this->message << ". Error code = " << this->code;
         return oss.str().c_str();
+    }
+
+    // Change the message and return my instance
+    // (Used for singleton format)
+    FloppyIOException * set(int code, string message) {
+        this->code = code;
+        this->message = message;
+        return this;
     }
     
 };
