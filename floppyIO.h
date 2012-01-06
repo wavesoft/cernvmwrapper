@@ -94,7 +94,6 @@ class FloppyIO {
 public:
     
     // Construcors
-    FloppyIO(const char * filename);
     FloppyIO(const char * filename, int flags);
     virtual ~FloppyIO();
     
