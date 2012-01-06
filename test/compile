@@ -3,7 +3,9 @@
 cd ..
 echo "Compiling FloppyIO..."
 g++ -o test/floppyio.o -c floppyIO.cpp
+[ $? -ne 0 ] && exit 2
 cd test
 echo "Compiling test..."
 g++ -g floppyio.o test.cpp
+[ $? -ne 0 ] && exit 2
 
