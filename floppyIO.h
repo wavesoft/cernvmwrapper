@@ -73,11 +73,11 @@ using namespace std;
 //
 // Error code constants
 //
-#define F_NOERR          0  // No error occured
-#define F_ERR_IO        -1  // There was an I/O error on the strea,
-#define F_ERR_TIMEOUT   -2  // The operation timed out
-#define F_ERR_CREATE    -3  // Unable to freate the floppy file
-#define F_ERR_NOTREADY  -4  // The I/O object is not ready
+#define FPIO_NOERR          0  // No error occured
+#define FPIO_ERR_IO        -1  // There was an I/O error on the strea,
+#define FPIO_ERR_TIMEOUT   -2  // The operation timed out
+#define FPIO_ERR_CREATE    -3  // Unable to freate the floppy file
+#define FPIO_ERR_NOTREADY  -4  // The I/O object is not ready
 
 //
 // Structure of the synchronization control byte.
@@ -116,7 +116,7 @@ class FloppyIO {
 public:
     
     // Construcors
-    FloppyIO(const char * filename, int flags);
+    FloppyIO(const char * filename, int flags = 0);
     virtual ~FloppyIO();
     
     // Functions

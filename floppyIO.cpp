@@ -342,6 +342,7 @@ void FloppyIO::clear() {
 
 //
 // Check if everything is in ready state
+// @return Returns true if there are no errors and stream hasn't failed
 //
 bool FloppyIO::ready() {
     if (this->error!=0) return false;

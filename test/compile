@@ -1,0 +1,9 @@
+#!/bin/bash
+
+cd ..
+echo "Compiling FloppyIO..."
+g++ -o test/floppyio.o -c floppyIO.cpp
+cd test
+echo "Compiling test..."
+g++ -g floppyio.o test.cpp
+
