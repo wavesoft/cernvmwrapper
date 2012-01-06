@@ -50,9 +50,13 @@ static FloppyIOException   __FloppyIOExceptionSingleton;
 // F_NOINIT         Disables the reseting of the image file at open
 // F_NOCREATE       Does not truncate the file at open (If not exists, the file will be created)
 // F_SYNCHRONIZED   The communication is synchronized, meaning that the code will block until the 
-//                  data are read/written from the guest. [NOT YET IMPLEMENTED]
+//                  data are read/written from the guest.
+// F_EXCEPTIONS     Throw exceptions if something goes wrong.
+// F_CLIENT         Swap in/out buffers for use from within the guest.
 // 
-// @param filename The filename of the floppy disk image
+// @param filename  The filename of the floppy disk image
+// @param flags     The flags that define how the FloppyIO class should function
+//
 
 FloppyIO::FloppyIO(const char * filename, int flags) {
   // Clear error flag
@@ -111,7 +115,7 @@ FloppyIO::FloppyIO(const char * filename, int flags) {
   
   // Setup offsets and sizes of the I/O parts
   if ((flags & F_CLIENT) != 0) {
-    // Client mode
+    // Guest mode
     this->szOutput = this->szFloppy/2-1;
     this->szInput = this->szOutput;
     this->ofsOutput = this->szInput;
@@ -157,7 +161,7 @@ FloppyIO::~FloppyIO() {
 void FloppyIO::reset() {
   // Check for ready state
   if (!this->ready()) {
-    this->setError(-4, "Stream is not in ready mode!");
+    this->setError(-4, "Stream is not ready!");
     return;
   }
   
@@ -181,7 +185,7 @@ int FloppyIO::send(string strData) {
     memset(dataToSend, 0, this->szOutput);
     
     // Check for ready state
-    if (!this->ready()) return this->setError(-4, "Stream is not in ready mode!");
+    if (!this->ready()) return this->setError(-4, "Stream is not ready!");
 
     // Initialize variables
     int szData = strData.length();
@@ -247,7 +251,7 @@ int FloppyIO::receive(string * ansBuffer) {
     int dataLength = this->szInput;
 
     // Check for ready state
-    if (!this->ready()) return this->setError(-4, "Stream was not in ready mode!");
+    if (!this->ready()) return this->setError(-4, "Stream is not ready!");
 
     // If synchronized, wait for input data
     if (this->synchronized) {
