@@ -55,6 +55,11 @@ FloppyIO::FloppyIO(const char * filename, int flags) {
   ios_base::openmode fOpenFlags = fstream::in | fstream::out;
   if ((flags & F_NOCREATE) == 0) fOpenFlags |= fstream::trunc;
   fstream *fIO = new fstream(filename, fOpenFlags);
+
+  // Update synchronization flags
+  this->synchronized = false;
+  this->syncTimeout = DEFAULT_FIO_SYNC_TIMEOUT;
+  if ((flags & F_SYNCHRONIZED) != 0) this->synchronized=true;
   
   // Check for errors while F_NOCREATE is there
   if ((flags & F_NOCREATE) != 0) {
@@ -88,7 +93,7 @@ FloppyIO::FloppyIO(const char * filename, int flags) {
   
   // Prepare floppy info
   this->fIO = fIO;
-  this->szFloppy = DEFAULT_FLOPPY_SIZE;
+  this->szFloppy = DEFAULT_FIO_FLOPPY_SIZE;
   
   // Setup offsets and sizes of the I/O parts
   this->szOutput = this->szFloppy/2-1;
@@ -164,6 +169,14 @@ int FloppyIO::send(string strData) {
     // Notify the client that we placed data (Client should clear this on read)
     this->fIO->seekp(this->ofsCtrlByteOut);
     this->fIO->write("\x01", 1);
+    this->fIO->flush();
+
+    // If synchronized, wait for data to be written
+    if (this->synchronized) {
+        // Wait for input control byte to become 1
+        int iState = this->waitForSync(this->ofsCtrlByteOut, 0, this->syncTimeout);
+        if (iState<0) return iState;
+    }
 
     // Return number of bytes sent
     return bytesSent;
@@ -177,7 +190,7 @@ int FloppyIO::send(string strData) {
 //
 string FloppyIO::receive() {
     static string ansBuffer;
-    receive(&ansBuffer);
+    this->receive(&ansBuffer);
     return ansBuffer;
 }
 
@@ -190,6 +203,13 @@ string FloppyIO::receive() {
 int FloppyIO::receive(string * ansBuffer) {
     char * dataToReceive = new char[this->szInput];
     int dataLength = this->szInput;
+
+    // If synchronized, wait for input data
+    if (this->synchronized) {
+        // Wait for input control byte to become 1
+        int iState = this->waitForSync(this->ofsCtrlByteIn, 1, this->syncTimeout);
+        if (iState<0) return iState;
+    }
     
     // Check for stream status
     if (!this->fIO->good()) return -1;
@@ -198,21 +218,14 @@ int FloppyIO::receive(string * ansBuffer) {
     this->fIO->seekg(this->ofsInput, ios_base::beg);
     this->fIO->read(dataToReceive, this->szInput);
 
-    // Find the size of the input string
-    for (int i=0; i<this->szInput; i++) {
-        if (dataToReceive[0] == '\0') {
-            dataLength=i;
-            break;
-        }
-    }
-    
     // Notify the client that we have read the data
     this->fIO->seekp(this->ofsCtrlByteIn);
     this->fIO->write("\x00", 1);
+    this->fIO->flush();
     
     // Copy input data to string object
     *ansBuffer = dataToReceive;
-    return dataLength;
+    return ansBuffer->length();
     
 }
 
@@ -221,10 +234,11 @@ int FloppyIO::receive(string * ansBuffer) {
 // the synchronization bit cleared.
 //
 // @param controlByteOffset The offset (from the beginning of file) where to look for the control byte
+// @param state             The state the controlByte must be for this function to exit.
 // @param timeout           The time (in seconds) to wait for a change. 0 Will wait forever
 // @return                  Returns 0 if everything succeeded, -1 if an error occured, -2 if timed out.
 
-int  FloppyIO::waitForSync(int controlByteOffset, int timeout) {
+int  FloppyIO::waitForSync(int controlByteOffset, char state, int timeout) {
     time_t tExpired = time (NULL) + timeout;
     char cStatusByte;
 
@@ -239,7 +253,7 @@ int  FloppyIO::waitForSync(int controlByteOffset, int timeout) {
         this->fIO->read(&cStatusByte, 1);
 
         // Is the control byte 0? Our job is finished...
-        if (cStatusByte == 0) return 0;
+        if (cStatusByte == state) return 0;
     }
 
     // If we reached this point, we timed out

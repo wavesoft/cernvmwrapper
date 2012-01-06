@@ -85,8 +85,13 @@ typedef struct fpio_ctlbyte {
 // VirtualBox complains if bigger than 28K
 // It's supposed to go till 1474560 however (!.44 Mb)
 
-#define DEFAULT_FLOPPY_SIZE 28672
+#define DEFAULT_FIO_FLOPPY_SIZE 28672
 
+// Default synchronization timeout (seconds).
+// This constant defines how long we should wait for synchronization
+// feedback from the guest before aborting.
+
+#define DEFAULT_FIO_SYNC_TIMEOUT 5
 
 // Floppy I/O Communication class
 
@@ -104,16 +109,20 @@ public:
     int         receive(string * strBuffer);
     
     // Topology info
-    int     ofsInput;   // Input buffer offset & size
-    int     szInput;
-    int     ofsOutput;  // Output buffer offset & size
-    int     szOutput;
+    int         ofsInput;   // Input buffer offset & size
+    int         szInput;
+    int         ofsOutput;  // Output buffer offset & size
+    int         szOutput;
     
-    int     ofsCtrlByteIn;  // Control byte offset for input
-    int     ofsCtrlByteOut; // Control byte offset for output
+    int         ofsCtrlByteIn;  // Control byte offset for input
+    int         ofsCtrlByteOut; // Control byte offset for output
+
+    // Synchronization stuff
+    bool        synchronized;   // The read/writes are synchronized
+    int         syncTimeout;    // For how long should we wait
 
     // Last error code
-    int     error;
+    int         error;
 
 private:
 
@@ -122,7 +131,7 @@ private:
     int     szFloppy;
 
     // Functions
-    int     waitForSync(int controlByteOffset, int timeout);
+    int     waitForSync(int controlByteOffset, char state, int timeout);
     
 };
 
