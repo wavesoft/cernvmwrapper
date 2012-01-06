@@ -107,6 +107,15 @@ FloppyIO::FloppyIO(const char * filename, int flags) {
           flags &= ~F_NOINIT;
       }
           
+  } else {
+
+      // Check for failures on open
+      if ( (fIO->rdstate() & ifstream::failbit ) != 0 ) {
+
+
+        
+      }
+
   }
   
   // Prepare floppy info
@@ -152,7 +161,7 @@ void FloppyIO::reset() {
 // Send data to the floppy image I/O
 //
 // @param strData   The string to send
-// @return          The number of bytes sent
+// @return          The number of bytes sent if successful or -1 if an error occured.
 //
 int FloppyIO::send(string strData) {
     // Prepare send buffer
@@ -173,9 +182,15 @@ int FloppyIO::send(string strData) {
         strData.copy(dataToSend, szData, 0);
     }
     
+    // Check for stream status
+    if (!this->fIO->good()) return -1;
+    
     // Write the data to file
     this->fIO->seekp(this->ofsOutput);
     bytesSent = this->fIO->write(dataToSend, this->szOutput);
+    
+    // Check if something went wrong after writing
+    if (!this->fIO->good()) return -1;
     
     // Notify the client that we placed data (Client should clear this on read)
     this->fIO->seekp(this->ofsCtrlByteOut);
@@ -216,3 +231,36 @@ string FloppyIO::receive() {
     return ansBuffer;
     
 }
+
+// Wait for synchronization byte to be cleared.
+// This function blocks until the byte at controlByteOffset has
+// the synchronization bit cleared.
+//
+// @param controlByteOffset The offset (from the beginning of file) where to look for the control byte
+// @param timeout           The time (in seconds) to wait for a change. 0 Will wait forever
+// @return                  Returns 0 if everything succeeded, -1 if an error occured, -2 if timed out.
+
+int  FloppyIO::waitForSync(int controlByteOffset, int timeout) {
+    time_t tExpired = time (NULL) + timeout;
+    char cStatusByte;
+
+    // Wait until expired or forever.
+    while ((timeout == 0) || ( time(NULL) <= tExpired)) {
+
+        // Check for stream status
+        if (!this->fIO->good()) return -1;
+
+        // Check the synchronization byte
+        this->fIO->seekg(controlByteOffset, ios_base::beg);
+        this->fIO->read(&cStatusByte, 1);
+
+        // Is the control byte 0? Our job is finished...
+        if (cStatusByte == "\x00") return 0;
+    }
+
+    // If we reached this point, we timed out
+    return -2;
+
+}
+
+
