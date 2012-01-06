@@ -41,6 +41,7 @@
 #define	FLOPPYIO_H
 
 #include <iostream>
+#include <sstream>
 #include <fstream>
 #include <string.h>
 
@@ -68,6 +69,15 @@ using namespace std;
 // within the virtual machine.
 // (Flag used by the FloppyIO constructor)
 #define F_CLIENT 16
+
+//
+// Error code constants
+//
+#define F_NOERR          0  // No error occured
+#define F_ERR_IO        -1  // There was an I/O error on the strea,
+#define F_ERR_TIMEOUT   -2  // The operation timed out
+#define F_ERR_CREATE    -3  // Unable to freate the floppy file
+#define F_ERR_NOTREADY  -4  // The I/O object is not ready
 
 //
 // Structure of the synchronization control byte.
@@ -99,8 +109,9 @@ typedef struct fpio_ctlbyte {
 
 #define DEFAULT_FIO_SYNC_TIMEOUT 5
 
+//
 // Floppy I/O Communication class
-
+//
 class FloppyIO {
 public:
     
@@ -144,6 +155,49 @@ private:
     // Functions
     int         waitForSync(int controlByteOffset, char state, int timeout);
     int         setError(int code, string message);
+    
+};
+
+//
+// Floppy I/O Exceptions
+//
+class FloppyIOException: public exception {
+public:
+
+    int         code;
+    string      message;
+
+    //
+    // Exception constructor
+    // @param code      The error code
+    // @param message   The error message
+    //
+    FloppyIOException(int code, string message) { 
+        this->message = message;
+        this->code = code;
+    };
+
+    //
+    // Exception constructor with nested exception support
+    // @param code      The error code
+    // @param message   The error message
+    // @param exception The parent exception that caused this one
+    //
+    FloppyIOException(int code, string message, const exception&) { 
+        exception::exception(exception);
+        this->message = message;
+        this->code = code;
+    };
+
+    // Destructor
+    virtual ~FloppyIOException() throw() { };
+
+    // Get description
+    virtual const char* what() const throw() {
+        static ostringstream oss (ostringstream::out);
+        oss << this->message << ". Error code = " << this->code;
+        return oss.str().c_str();
+    }
     
 };
 

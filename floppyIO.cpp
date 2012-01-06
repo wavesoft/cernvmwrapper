@@ -57,9 +57,10 @@ FloppyIO::FloppyIO(const char * filename, int flags) {
   ios_base::openmode fOpenFlags = fstream::in | fstream::out;
   if ((flags & F_NOCREATE) == 0) fOpenFlags |= fstream::trunc;
   fstream *fIO = new fstream( );
+  this->fIO = fIO;
   
   // Enable exceptions on fIO if told so
-  if ((flags & F_EXCEPTIONS) == 0) {
+  if ((flags & F_EXCEPTIONS) != 0) {
     fIO->exceptions( ifstream::failbit | ifstream::badbit );
     this->useExceptions=true;
   } else {
@@ -101,24 +102,23 @@ FloppyIO::FloppyIO(const char * filename, int flags) {
   }
   
   // Prepare floppy info
-  this->fIO = fIO;
   this->szFloppy = DEFAULT_FIO_FLOPPY_SIZE;
   
   // Setup offsets and sizes of the I/O parts
   if ((flags & F_CLIENT) != 0) {
     // Client mode
-    this->szInput = this->szFloppy/2-1;
-    this->ofsInput = 0;
-    this->szOutput = this->szInput;
+    this->szOutput = this->szFloppy/2-1;
+    this->szInput = this->szOutput;
     this->ofsOutput = this->szInput;
-    this->ofsCtrlByteIn = this->szOutput+this->szInput;
-    this->ofsCtrlByteOut = this->szOutput+this->szInput+1;
+    this->ofsInput = 0;
+    this->ofsCtrlByteIn = this->szInput+this->szOutput;
+    this->ofsCtrlByteOut = this->szInput+this->szOutput+1;
     
   } else {
     // Hypervisor mode
     this->szOutput = this->szFloppy/2-1;
-    this->ofsOutput = 0;
     this->szInput = this->szOutput;
+    this->ofsOutput = 0;
     this->ofsInput = this->szOutput;
     this->ofsCtrlByteOut = this->szInput+this->szOutput;
     this->ofsCtrlByteIn = this->szInput+this->szOutput+1;
@@ -316,12 +316,18 @@ int  FloppyIO::setError(int code, const string message) {
     this->error = code;
 
     // Chain errors
-    this->errorStr = message + "\nPrevious: " + this->errorStr;
+    if (this->errorStr.empty()) {
+        this->errorStr = message;
+    } else {
+        this->errorStr = message + " (" + this->errorStr + ")";
+    }
 
     // Should we raise an exception?
-    if (this->useExceptions) {
-    }
-    
+    if (this->useExceptions) 
+        throw new FloppyIOException(code, message);
+
+    // Otherwise return code
+    // (Useful for using single-lined: return this->setError(-1, "message..');
     return code;
 }
 
@@ -341,4 +347,6 @@ bool FloppyIO::ready() {
     if (this->error!=0) return false;
     return this->fIO->good();
 }
+
+
 
