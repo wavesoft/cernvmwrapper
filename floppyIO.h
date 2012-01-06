@@ -63,6 +63,12 @@ using namespace std;
 // (Flag used by the FloppyIO constructor)
 #define F_EXCEPTIONS 8
 
+// Initialize FloppyIO in client mode.
+// This flag will swap the input/output buffers, making the script usable from
+// within the virtual machine.
+// (Flag used by the FloppyIO constructor)
+#define F_CLIENT 16
+
 //
 // Structure of the synchronization control byte.
 //
@@ -121,17 +127,23 @@ public:
     bool        synchronized;   // The read/writes are synchronized
     int         syncTimeout;    // For how long should we wait
 
-    // Last error code
+    // Error reporting and checking
     int         error;
+    string      errorStr;
+    bool        useExceptions;  // If TRUE errors will raise exceptions
+    
+    void        clear();        // Clear errors
+    bool        ready();        // Returns TRUE if there are no errors
 
 private:
 
     // Floppy Info
-    fstream * fIO;
-    int     szFloppy;
+    fstream *   fIO;
+    int         szFloppy;
 
     // Functions
-    int     waitForSync(int controlByteOffset, char state, int timeout);
+    int         waitForSync(int controlByteOffset, char state, int timeout);
+    int         setError(int code, string message);
     
 };
 

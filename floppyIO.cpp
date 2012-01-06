@@ -50,22 +50,30 @@
 // @param filename The filename of the floppy disk image
 
 FloppyIO::FloppyIO(const char * filename, int flags) {
-    
-  // Open file
+  // Clear error flag
+  this->error = 0;
+  
+  // Prepare open flags and create file stream
   ios_base::openmode fOpenFlags = fstream::in | fstream::out;
   if ((flags & F_NOCREATE) == 0) fOpenFlags |= fstream::trunc;
-  fstream *fIO = new fstream(filename, fOpenFlags);
-
-  // Update synchronization flags
-  this->synchronized = false;
-  this->syncTimeout = DEFAULT_FIO_SYNC_TIMEOUT;
-  if ((flags & F_SYNCHRONIZED) != 0) this->synchronized=true;
+  fstream *fIO = new fstream( );
   
+  // Enable exceptions on fIO if told so
+  if ((flags & F_EXCEPTIONS) == 0) {
+    fIO->exceptions( ifstream::failbit | ifstream::badbit );
+    this->useExceptions=true;
+  } else {
+    this->useExceptions=false;
+  }
+  
+  // Try to open the file
+  fIO->open(filename, fOpenFlags);
+
   // Check for errors while F_NOCREATE is there
   if ((flags & F_NOCREATE) != 0) {
-      if ( (fIO->rdstate() & ifstream::failbit ) != 0 ) {
+      if ( fIO->fail() ) {
           
-          // Clear error flag
+          // Clear error flags
           fIO->clear();
           
           // Try to create file
@@ -73,8 +81,8 @@ FloppyIO::FloppyIO(const char * filename, int flags) {
           fIO->open(filename, fOpenFlags);
           
           // Still errors?
-          if ( (fIO->rdstate() & ifstream::failbit ) != 0 ) {
-            cerr << "Error opening '" << filename << "'!\n";
+          if ( fIO->fail() ) {
+            this->setError(-3, "Error while creating floppy I/O file, because it wasn't found even though F_NOCREATE was specified!"); 
             return;
           }
           
@@ -85,8 +93,9 @@ FloppyIO::FloppyIO(const char * filename, int flags) {
   } else {
 
       // Check for failures on open
-      if ( (fIO->rdstate() & ifstream::failbit ) != 0 ) {
-        
+      if ( fIO->fail() ) {
+        this->setError(-3, "Error while creating floppy I/O file!");         
+        return;
       }
 
   }
@@ -96,12 +105,29 @@ FloppyIO::FloppyIO(const char * filename, int flags) {
   this->szFloppy = DEFAULT_FIO_FLOPPY_SIZE;
   
   // Setup offsets and sizes of the I/O parts
-  this->szOutput = this->szFloppy/2-1;
-  this->ofsOutput = 0;
-  this->szInput = this->szOutput;
-  this->ofsInput = this->szOutput;
-  this->ofsCtrlByteOut = this->szInput+this->szOutput;
-  this->ofsCtrlByteIn = this->szInput+this->szOutput+1;
+  if ((flags & F_CLIENT) != 0) {
+    // Client mode
+    this->szInput = this->szFloppy/2-1;
+    this->ofsInput = 0;
+    this->szOutput = this->szInput;
+    this->ofsOutput = this->szInput;
+    this->ofsCtrlByteIn = this->szOutput+this->szInput;
+    this->ofsCtrlByteOut = this->szOutput+this->szInput+1;
+    
+  } else {
+    // Hypervisor mode
+    this->szOutput = this->szFloppy/2-1;
+    this->ofsOutput = 0;
+    this->szInput = this->szOutput;
+    this->ofsInput = this->szOutput;
+    this->ofsCtrlByteOut = this->szInput+this->szOutput;
+    this->ofsCtrlByteIn = this->szInput+this->szOutput+1;
+  }
+    
+  // Update synchronization flags
+  this->synchronized = false;
+  this->syncTimeout = DEFAULT_FIO_SYNC_TIMEOUT;
+  if ((flags & F_SYNCHRONIZED) != 0) this->synchronized=true;
   
   // Reset floppy file
   if ((flags & F_NOINIT) == 0) this->reset();
@@ -124,8 +150,16 @@ FloppyIO::~FloppyIO() {
 // This function zeroes-out the contents of the FD image
  
 void FloppyIO::reset() {
+  // Check for ready state
+  if (!this->ready()) {
+    this->setError(-4, "Stream is not in ready mode!");
+    return;
+  }
+  
+  // Reset to the beginnig of file and fill with zeroes
   this->fIO->seekp(0);
   char * buffer = new char[this->szFloppy];
+  memset(buffer, 0, this->szFloppy);
   this->fIO->write(buffer, this->szFloppy);
   delete[] buffer;      
 }
@@ -141,6 +175,9 @@ int FloppyIO::send(string strData) {
     char * dataToSend = new char[this->szOutput];
     memset(dataToSend, 0, this->szOutput);
     
+    // Check for ready state
+    if (!this->ready()) return this->setError(-4, "Stream is not in ready mode!");
+
     // Initialize variables
     int szData = strData.length();
     int szPad = 0;
@@ -157,14 +194,14 @@ int FloppyIO::send(string strData) {
     }
     
     // Check for stream status
-    if (!this->fIO->good()) return -1;
+    if (!this->fIO->good()) return this->setError(-1, "I/O Stream reported no-good state while sending!");
     
     // Write the data to file
     this->fIO->seekp(this->ofsOutput);
     this->fIO->write(dataToSend, this->szOutput);
     
     // Check if something went wrong after writing
-    if (!this->fIO->good()) return -1;
+    if (!this->fIO->good()) return this->setError(-1, "I/O Stream reported no-good state while sending!");
     
     // Notify the client that we placed data (Client should clear this on read)
     this->fIO->seekp(this->ofsCtrlByteOut);
@@ -204,6 +241,9 @@ int FloppyIO::receive(string * ansBuffer) {
     char * dataToReceive = new char[this->szInput];
     int dataLength = this->szInput;
 
+    // Check for ready state
+    if (!this->ready()) return this->setError(-4, "Stream was not in ready mode!");
+
     // If synchronized, wait for input data
     if (this->synchronized) {
         // Wait for input control byte to become 1
@@ -212,7 +252,7 @@ int FloppyIO::receive(string * ansBuffer) {
     }
     
     // Check for stream status
-    if (!this->fIO->good()) return -1;
+    if (!this->fIO->good()) return this->setError(-1, "I/O Stream reported no-good state while receiving!");
     
     // Read the input bytes from FD
     this->fIO->seekg(this->ofsInput, ios_base::beg);
@@ -246,7 +286,7 @@ int  FloppyIO::waitForSync(int controlByteOffset, char state, int timeout) {
     while ((timeout == 0) || ( time(NULL) <= tExpired)) {
 
         // Check for stream status
-        if (!this->fIO->good()) return -1;
+        if (!this->fIO->good()) return this->setError(-1, "I/O Stream reported no-good state while waiting for sync!");
 
         // Check the synchronization byte
         this->fIO->seekg(controlByteOffset, ios_base::beg);
@@ -254,11 +294,51 @@ int  FloppyIO::waitForSync(int controlByteOffset, char state, int timeout) {
 
         // Is the control byte 0? Our job is finished...
         if (cStatusByte == state) return 0;
+
+        // Sleep for a few milliseconds to decrease CPU-load
+        usleep( 10000 );
     }
 
     // If we reached this point, we timed out
-    return -2;
+    return this->setError(-2, "Timed-out while waiting for sync!");
 
 }
 
+//
+// Set last error.
+// This is a short-hand function to update the error variables.
+//
+// @param   code    The error code
+// @param   message The error message
+// @return          The error code
+//
+int  FloppyIO::setError(int code, const string message) {
+    this->error = code;
+
+    // Chain errors
+    this->errorStr = message + "\nPrevious: " + this->errorStr;
+
+    // Should we raise an exception?
+    if (this->useExceptions) {
+    }
+    
+    return code;
+}
+
+//
+// Clear error state flags
+//
+void FloppyIO::clear() {
+    this->error = 0;
+    this->errorStr = "";
+    this->fIO->clear();
+}
+
+//
+// Check if everything is in ready state
+//
+bool FloppyIO::ready() {
+    if (this->error!=0) return false;
+    return this->fIO->good();
+}
 
