@@ -148,7 +148,7 @@ FloppyIO::FloppyIO(const char * filename, int flags) {
     // Guest mode
     this->szOutput = this->szFloppy/2-1;
     this->szInput = this->szOutput;
-    this->ofsOutput = this->szInput;
+    this->ofsOutput = this->szInput+1;
     this->ofsInput = 1;
     this->ofsCtrlByteIn = this->szInput+this->szOutput+1;
     this->ofsCtrlByteOut = 0;
@@ -160,7 +160,7 @@ FloppyIO::FloppyIO(const char * filename, int flags) {
     this->szOutput = this->szFloppy/2-1;
     this->szInput = this->szOutput;
     this->ofsOutput = 1;
-    this->ofsInput = this->szOutput;
+    this->ofsInput = this->szOutput+1;
     this->ofsCtrlByteOut = this->szInput+this->szOutput+1;
     this->ofsCtrlByteIn = 0;
 
