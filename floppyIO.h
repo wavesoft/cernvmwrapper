@@ -29,12 +29,12 @@
 //  
 //  Here is the layout of the floppy disk image (Example of 28k):
 // 
-//  +-----------------+------------------------------------------------+
-//  | 0x0000 - 0x37FF |  Hypervisor -> Guest Buffer                    |
-//  | 0x3800 - 0x6FFE |  Guest -> Hypervisor Buffer                    |
-//  |     0x6FFF      |  "Data available for guest" flag byte          |
-//  |     0x7000      |  "Data available for hypervisor" flag byte     |
-//  +-----------------+------------------------------------------------+
+// +-----------------+------------------------------------------------+
+// |     0x0001      |  "Data available for hypervisor" flag byte     |
+// | 0x0001 - 0x3800 |  Hypervisor -> Guest Buffer                    |
+// | 0x3801 - 0x6FFF |  Guest -> Hypervisor Buffer                    |
+// |     0x7000      |  "Data available for guest" flag byte          |
+// +-----------------+------------------------------------------------+
 //
 //  Updated at January 5, 2012, 13:06 PM
 //

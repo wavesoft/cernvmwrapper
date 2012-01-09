@@ -30,10 +30,10 @@
 // Here is the layout of the floppy disk image (Example of 28k):
 //
 // +-----------------+------------------------------------------------+
-// | 0x0000 - 0x37FF |  Hypervisor -> Guest Buffer                    |
-// | 0x3800 - 0x6FFE |  Guest -> Hypervisor Buffer                    |
-// |     0x6FFF      |  "Data available for guest" flag byte          |
-// |     0x7000      |  "Data available for hypervisor" flag byte     |
+// |     0x0001      |  "Data available for hypervisor" flag byte     |
+// | 0x0001 - 0x3800 |  Hypervisor -> Guest Buffer                    |
+// | 0x3801 - 0x6FFF |  Guest -> Hypervisor Buffer                    |
+// |     0x7000      |  "Data available for guest" flag byte          |
 // +-----------------+------------------------------------------------+
 // 
 // Updated at January 5, 2012, 13:06 PM
@@ -149,9 +149,9 @@ FloppyIO::FloppyIO(const char * filename, int flags) {
     this->szOutput = this->szFloppy/2-1;
     this->szInput = this->szOutput;
     this->ofsOutput = this->szInput;
-    this->ofsInput = 0;
-    this->ofsCtrlByteIn = this->szInput+this->szOutput;
-    this->ofsCtrlByteOut = this->szInput+this->szOutput+1;
+    this->ofsInput = 1;
+    this->ofsCtrlByteIn = this->szInput+this->szOutput+1;
+    this->ofsCtrlByteOut = 0;
 
     cerr << "FPIO Started in client mode\n";
     
@@ -159,10 +159,10 @@ FloppyIO::FloppyIO(const char * filename, int flags) {
     // Hypervisor mode
     this->szOutput = this->szFloppy/2-1;
     this->szInput = this->szOutput;
-    this->ofsOutput = 0;
+    this->ofsOutput = 1;
     this->ofsInput = this->szOutput;
-    this->ofsCtrlByteOut = this->szInput+this->szOutput;
-    this->ofsCtrlByteIn = this->szInput+this->szOutput+1;
+    this->ofsCtrlByteOut = this->szInput+this->szOutput+1;
+    this->ofsCtrlByteIn = 0;
 
     cerr << "FPIO Started in hypervisor mode\n";
   }
