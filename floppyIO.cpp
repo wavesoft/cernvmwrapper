@@ -108,6 +108,8 @@ FloppyIO::FloppyIO(const char * filename, int flags) {
   
   // Try to open the file
   fIO->open(filename, fOpenFlags);
+  this->openName = filename;
+  this->openFlags = fOpenFlags;
 
   // Check for errors while FPIO_NOCREATE is there
   if ((flags & FPIO_NOCREATE) != 0) {
@@ -119,6 +121,7 @@ FloppyIO::FloppyIO(const char * filename, int flags) {
           // Try to create file
           fOpenFlags |= fstream::trunc;
           fIO->open(filename, fOpenFlags);
+          this->openFlags = fOpenFlags;
           
           // Still errors?
           if ( fIO->fail() ) {
@@ -204,6 +207,15 @@ FloppyIO::~FloppyIO() {
     // Release memory
     delete this->fIO;
 }
+
+// Hard-flush.
+// This function closes and opens the file
+void FloppyIO::flush() {
+    this->fIO->flush();
+    this->fIO->close();
+    this->fIO->open(this->openName, this->openFlags);
+}
+
 
 // Reset the floppy disk image
 // This function zeroes-out the contents of the FD image
@@ -307,7 +319,7 @@ int FloppyIO::send(char * dataToSend, int szData, fpio_ctlbyte * ctrlByte) {
     // Notify the client that we placed data (Client should clear this on read)
     this->fIO->seekp(this->ofsCtrlByteOut);
     this->fIO->write(&cB.byte, 1);
-    this->fIO->flush();
+    this->flush();
 
     cerr << "Just sent in sync at " << this->ofsCtrlByteOut << " value= " << (int)cB.byte << "\n";
 
@@ -415,7 +427,7 @@ int FloppyIO::receive(char * dataToReceive, int szData, fpio_ctlbyte * ctrlByte)
     // Notify the client that we have read the data
     this->fIO->seekp(this->ofsCtrlByteIn);
     this->fIO->write(&cB.byte, 1);
-    this->fIO->flush();
+    this->flush();
 
     cerr << "Just sent out sync at " << this->ofsCtrlByteIn << " value= " << (int)cB.byte << "\n";
 

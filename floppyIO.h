@@ -172,6 +172,10 @@ private:
     fstream *   fIO;
     int         szFloppy;
 
+    // Re-open information
+    char *      openName;
+    int         openFlags;
+
     // Use binary data transfer
     // (Cannot be changed during run-time)
     bool        binary;
@@ -179,6 +183,7 @@ private:
     // Functions
     int         waitForSync(int controlByteOffset, int timeout, char state, char mask = 0xff);
     int         setError(int code, string message);
+    int         flush();
     
 };
 
