@@ -108,7 +108,8 @@ FloppyIO::FloppyIO(const char * filename, int flags) {
   
   // Try to open the file
   fIO->open(filename, fOpenFlags);
-  this->openName = filename;
+  this->openName = new char[strlen(filename)];
+  strcpy(this->openName, filename);
   this->openFlags = fOpenFlags;
 
   // Check for errors while FPIO_NOCREATE is there

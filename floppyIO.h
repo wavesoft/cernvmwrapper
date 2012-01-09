@@ -174,7 +174,7 @@ private:
 
     // Re-open information
     char *      openName;
-    int         openFlags;
+    ios_base::openmode  openFlags;
 
     // Use binary data transfer
     // (Cannot be changed during run-time)
@@ -183,7 +183,7 @@ private:
     // Functions
     int         waitForSync(int controlByteOffset, int timeout, char state, char mask = 0xff);
     int         setError(int code, string message);
-    int         flush();
+    void        flush();
     
 };
 
