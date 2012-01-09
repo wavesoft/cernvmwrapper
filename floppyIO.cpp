@@ -69,12 +69,12 @@ union fpio_datalen_io {
 // 
 // This constructor allows you to open a floppy disk image with extra flags.
 // 
-// F_NOINIT         Disables the reseting of the image file at open
-// F_NOCREATE       Does not truncate the file at open (If not exists, the file will be created)
-// F_SYNCHRONIZED   The communication is synchronized, meaning that the code will block until the 
+// FPIO_NOINIT         Disables the reseting of the image file at open
+// FPIO_NOCREATE       Does not truncate the file at open (If not exists, the file will be created)
+// FPIO_SYNCHRONIZED   The communication is synchronized, meaning that the code will block until the 
 //                  data are read/written from the guest.
-// F_EXCEPTIONS     Throw exceptions if something goes wrong.
-// F_CLIENT         Swap in/out buffers for use from within the guest.
+// FPIO_EXCEPTIONS     Throw exceptions if something goes wrong.
+// FPIO_CLIENT         Swap in/out buffers for use from within the guest.
 // 
 // @param filename  The filename of the floppy disk image
 // @param flags     The flags that define how the FloppyIO class should function
@@ -86,12 +86,13 @@ FloppyIO::FloppyIO(const char * filename, int flags) {
   
   // Prepare open flags and create file stream
   ios_base::openmode fOpenFlags = fstream::in | fstream::out;
-  if ((flags & F_NOCREATE) == 0) fOpenFlags |= fstream::trunc;
+  if ((flags & FPIO_NOCREATE) == 0) fOpenFlags |= fstream::trunc;
+  if ((flags & FPIO_BINARY) != 0)  fOpenFlags |= fstream::binary;
   fstream *fIO = new fstream( );
   this->fIO = fIO;
   
   // Enable exceptions on fIO if told so
-  if ((flags & F_EXCEPTIONS) != 0) {
+  if ((flags & FPIO_EXCEPTIONS) != 0) {
     fIO->exceptions( ifstream::failbit | ifstream::badbit );
     this->useExceptions=true;
   } else {
@@ -101,8 +102,8 @@ FloppyIO::FloppyIO(const char * filename, int flags) {
   // Try to open the file
   fIO->open(filename, fOpenFlags);
 
-  // Check for errors while F_NOCREATE is there
-  if ((flags & F_NOCREATE) != 0) {
+  // Check for errors while FPIO_NOCREATE is there
+  if ((flags & FPIO_NOCREATE) != 0) {
       if ( fIO->fail() ) {
           
           // Clear error flags
@@ -114,12 +115,12 @@ FloppyIO::FloppyIO(const char * filename, int flags) {
           
           // Still errors?
           if ( fIO->fail() ) {
-            this->setError(-3, "Error while creating floppy I/O file, because it wasn't found even though F_NOCREATE was specified!"); 
+            this->setError(-3, "Error while creating floppy I/O file, because it wasn't found even though FPIO_NOCREATE was specified!"); 
             return;
           }
           
           // Managed to open it? Reset it...
-          flags &= ~F_NOINIT;
+          flags &= ~FPIO_NOINIT;
       }
           
   } else {
@@ -136,7 +137,7 @@ FloppyIO::FloppyIO(const char * filename, int flags) {
   this->szFloppy = DEFAULT_FIO_FLOPPY_SIZE;
   
   // Setup offsets and sizes of the I/O parts
-  if ((flags & F_CLIENT) != 0) {
+  if ((flags & FPIO_CLIENT) != 0) {
     // Guest mode
     this->szOutput = this->szFloppy/2-1;
     this->szInput = this->szOutput;
@@ -144,6 +145,8 @@ FloppyIO::FloppyIO(const char * filename, int flags) {
     this->ofsInput = 0;
     this->ofsCtrlByteIn = this->szInput+this->szOutput;
     this->ofsCtrlByteOut = this->szInput+this->szOutput+1;
+
+    cerr << "FPIO Started in client mode\n";
     
   } else {
     // Hypervisor mode
@@ -153,16 +156,18 @@ FloppyIO::FloppyIO(const char * filename, int flags) {
     this->ofsInput = this->szOutput;
     this->ofsCtrlByteOut = this->szInput+this->szOutput;
     this->ofsCtrlByteIn = this->szInput+this->szOutput+1;
+
+    cerr << "FPIO Started in hypervisor mode\n";
   }
     
   // Update synchronization flags
   this->synchronized = false;
   this->syncTimeout = DEFAULT_FIO_SYNC_TIMEOUT;
-  if ((flags & F_SYNCHRONIZED) != 0) this->synchronized=true;
+  if ((flags & FPIO_SYNCHRONIZED) != 0) this->synchronized=true;
 
   // Update binary flags
   this->binary = false;
-  if ((flags & F_BINARY) != 0) {
+  if ((flags & FPIO_BINARY) != 0) {
 
     // Reduce the I/O buffers by 4 bytes (used by the data-length prefix)
     this->szInput -= 3;
@@ -174,7 +179,7 @@ FloppyIO::FloppyIO(const char * filename, int flags) {
   }
   
   // Reset floppy file
-  if ((flags & F_NOINIT) == 0) this->reset();
+  if ((flags & FPIO_NOINIT) == 0) this->reset();
 
 }
 
@@ -202,9 +207,9 @@ void FloppyIO::reset() {
   
   // Reset to the beginnig of file and fill with zeroes
   this->fIO->seekp(0);
-  char * buffer = new char[this->szFloppy];
-  memset(buffer, 0, this->szFloppy);
-  this->fIO->write(buffer, this->szFloppy);
+  char * buffer = new char[this->szFloppy+1];
+  memset(buffer, 0, this->szFloppy+1);
+  this->fIO->write(buffer, this->szFloppy+1);
   delete[] buffer;      
 }
 
@@ -280,7 +285,7 @@ int FloppyIO::send(char * dataToSend, int szData, fpio_ctlbyte * ctrlByte) {
         cB.flags.bLengthPrefix = 1;    // Update control byte : set 'we have length prefix'
         dL.size = szData;              // Set the data length int
         this->fIO->write(dL.bytes, 4); // And send the 4-byte representation
-        cout << "Binary mode selected. Prefixing: " << dL.size << "\n";
+        cerr << "Binary mode selected. Prefixing: " << dL.size << "\n";
     }
 
     // Send the data
@@ -293,6 +298,8 @@ int FloppyIO::send(char * dataToSend, int szData, fpio_ctlbyte * ctrlByte) {
     this->fIO->seekp(this->ofsCtrlByteOut);
     this->fIO->write(&cB.byte, 1);
     this->fIO->flush();
+
+    cerr << "Just sent in sync at " << this->ofsCtrlByteOut << " value= " << (int)cB.byte << "\n";
 
     // If synchronized, wait for data to be written
     if (this->synchronized) {
@@ -368,6 +375,8 @@ int FloppyIO::receive(char * dataToReceive, int szData, fpio_ctlbyte * ctrlByte)
     this->fIO->seekg(this->ofsCtrlByteIn);
     this->fIO->read(&cB.byte, 1);
 
+    cerr << "Got control byte: " << (int)cB.byte << "\n";
+
     // Update control byte if we have it specified
     if (ctrlByte != NULL) *ctrlByte = cB.flags;
 
@@ -380,7 +389,7 @@ int FloppyIO::receive(char * dataToReceive, int szData, fpio_ctlbyte * ctrlByte)
     if (this->binary && (cB.flags.bLengthPrefix == 1)) {
         fpio_datalen_io dL;
         this->fIO->read(dL.bytes, 4);  // Read the 4-byte representation
-        cout << "Binary mode detected. Read: " << dL.size << "\n";
+        cerr << "Binary mode detected. Read: " << dL.size << "\n";
         dataLength = dL.size;
         if (dataLength > this->szInput) 
             dataLength = this->szInput; // Protect from overflows
@@ -397,6 +406,8 @@ int FloppyIO::receive(char * dataToReceive, int szData, fpio_ctlbyte * ctrlByte)
     this->fIO->seekp(this->ofsCtrlByteIn);
     this->fIO->write(&cB.byte, 1);
     this->fIO->flush();
+
+    cerr << "Just sent out sync at " << this->ofsCtrlByteIn << " value= " << (int)cB.byte << "\n";
 
     // Return the data length
     return dataLength;
@@ -436,6 +447,13 @@ int FloppyIO::receive(ostream * stream) {
             
         }
 
+        // Did we got a data failure?
+        if (cB.bAborted==1) {
+            stream->flush();
+            stream->setstate(ostream::failbit);
+            return FPIO_ERR_ABORTED;
+        }
+
     // Not synchronized? Read only one block
     } else {
 
@@ -467,11 +485,13 @@ int FloppyIO::receive(ostream * stream) {
 // TODO: Do not rely on null-byte termination: Allow binary file transfer
 //
 int FloppyIO::send(istream * stream) {
-    string data;
     fpio_ctlbyte_io cBIO;
     fpio_ctlbyte * cB;
     char * inBuffer = new char[this->szOutput+1];
-    int sentLength, rd;
+    int sentLength, rd, res;
+
+    // Check if stream is not good
+    if (!stream->good()) return this->setError(FPIO_ERR_INPUT, "Unable to open input stream!");
 
     // Reset byte and get a reference to (zeroed) flags
     cBIO.byte=0;
@@ -484,30 +504,32 @@ int FloppyIO::send(istream * stream) {
         memset(inBuffer, 0, this->szOutput+1);
 
         // Read data 
-        // TODO: Use this when you solve the binary-sending: rd=stream->tellg();
-        stream->read(inBuffer, this->szOutput);
+        stream->read(inBuffer, this->szOutput-1);
+        rd = stream->gcount();
 
         // Check status
-        if (stream->eof()) {
+        if (stream->eof() || (stream->tellg() < 0)) {
             // EOF? Mark end-of-data on the current block
             cB->bEndOfData=1;
 
         } else if (stream->fail()) {
             // Got fail without getting eof? Something went wrong
+
+            // Notify the remote end that we failed the transmittion
+            cB->bAborted=1;
+            cB->bEndOfData=1;
+            res = this->send("", cB); // Send Zero data and the appropriate control bits
+
+            // Return error            
             return this->setError(-5, "Unable to read from input stream");
             
         }
 
-        // Cast to string to use the send function
-        // TODO: Time-costly, try to use char*
-        data = inBuffer;
-
         // Count bytes written
-        // TODO: Use this when you solve the binary-sending: rd= (int) stream->tellg() - rd;
-        rd = this->send(data, cB);
-        if (rd<0) return rd; // Error occured
+        res = this->send(inBuffer, rd, cB);
+        if (res<0) return res; // Error occured
         
-        sentLength+=rd;
+        sentLength+=res;
 
     }
     
@@ -529,21 +551,23 @@ int  FloppyIO::waitForSync(int controlByteOffset, int timeout, char state, char 
     time_t tExpired = time (NULL) + timeout;
     char cStatusByte;
 
+    cerr << "Waiting for sync at " << controlByteOffset << " waiting for " << (int)state << " (Mask: " << (int)mask << ")\n";
+
     // Wait until expired or forever.
     while ((timeout == 0) || ( time(NULL) <= tExpired)) {
 
         // Check for stream status
-        if (!this->fIO->good()) return this->setError(-1, "I/O Stream reported no-good state while waiting for sync!");
-
+        if (!this->fIO->good()) return this->setError(-1, "I/O Stream reported non-good state while waiting for sync!");
+        
         // Check the synchronization byte
         this->fIO->seekg(controlByteOffset, ios_base::beg);
         this->fIO->read(&cStatusByte, 1);
 
         // Is the control byte 0? Our job is finished...
-        if ((cStatusByte & mask) == state) return 0;
+        if (((int)cStatusByte & (int)mask) == (int)state) return 0;
 
         // Sleep for a few milliseconds to decrease CPU-load
-        usleep( 10000 );
+        usleep( FPIO_TUNE_SLEEP );
     }
 
     // If we reached this point, we timed out

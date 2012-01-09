@@ -46,34 +46,38 @@
 
 using namespace std;
 
+// FloppyIO Version
+#define FPIO_VERSION  0,2
+
 // Do not initialize (reset) floppy disk image at open.
 // (Flag used by the FloppyIO constructor)
-#define F_NOINIT 1
+#define FPIO_NOINIT 1
 
 // Do not create the filename (assume it exists)
 // (Flag used by the FloppyIO constructor)
-#define F_NOCREATE 2
+#define FPIO_NOCREATE 2
 
 // Synchronize I/O.
 // This flag will block the script until the guest has read/written the data.
 // (Flag used by the FloppyIO constructor)
-#define F_SYNCHRONIZED 4
+#define FPIO_SYNCHRONIZED 4
 
 // Use exceptions instead of error codes
 // (Flag used by the FloppyIO constructor)
-#define F_EXCEPTIONS 8
+#define FPIO_EXCEPTIONS 8
 
 // Initialize FloppyIO in client mode.
 // This flag will swap the input/output buffers, making the script usable from
 // within the virtual machine.
 // (Flag used by the FloppyIO constructor)
-#define F_CLIENT 16
+#define FPIO_CLIENT 16
 
 // Enable binary transfers.
 // This flag enables binary transfers by prefixing the data with a 4-byte data-length
 // number, rather than relying on the null-termination byte.
 // (Flag used by the FloppyIO constructor)
-#define F_BINARY 32
+#define FPIO_BINARY 32
+
 //
 // Error code constants
 //
@@ -83,6 +87,14 @@ using namespace std;
 #define FPIO_ERR_CREATE    -3  // Unable to freate the floppy file
 #define FPIO_ERR_NOTREADY  -4  // The I/O object is not ready
 #define FPIO_ERR_INPUT     -5  // Error while reading from input (ex. input stream)
+#define FPIO_ERR_ABORTED   -6  // An operation was aborted from the remote end
+
+// Some tuning-up parameters
+
+// How much (microseconds) should we wait on the waitForSync loop.
+// Lower values increases throughput, but also increases CPU load. 
+// A value around 10,000 is usually OK.
+#define FPIO_TUNE_SLEEP    1000
 
 //
 // Structure of the synchronization control byte.
@@ -100,7 +112,8 @@ typedef struct fpio_ctlbyte {
     unsigned short bDataPresent   : 1;
     unsigned short bEndOfData     : 1;
     unsigned short bLengthPrefix  : 1;
-    unsigned short bReserved      : 5;
+    unsigned short bAborted       : 1;
+    unsigned short usID           : 4;
 };
 
 
