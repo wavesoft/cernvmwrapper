@@ -43,6 +43,17 @@
 // FloppyIO Exception singleton
 static FloppyIOException   __FloppyIOExceptionSingleton;
 
+//
+// An I/O union structure for fpio_ctrlbyte
+//
+// This union helps accessing the fpio_ctrlbyte flags without the
+// need of memset.
+//
+union fpio_ctlbyte_io {
+    fpio_ctlbyte flags;
+    char         byte;
+};
+
 // Advanced Floppy file constructor
 // 
 // This constructor allows you to open a floppy disk image with extra flags.
@@ -177,9 +188,12 @@ void FloppyIO::reset() {
 // Send data to the floppy image I/O
 //
 // @param strData   The string to send
+// @param ctrlByte  The extra parameters you want to write on the control byte
 // @return          The number of bytes sent if successful or -1 if an error occured.
 //
-int FloppyIO::send(string strData) {
+// TODO: String is time-costly, add also the char*/size version
+//
+int FloppyIO::send(string strData, fpio_ctlbyte * ctrlByte) {
     // Prepare send buffer
     char * dataToSend = new char[this->szOutput];
     memset(dataToSend, 0, this->szOutput);
@@ -211,16 +225,23 @@ int FloppyIO::send(string strData) {
     
     // Check if something went wrong after writing
     if (!this->fIO->good()) return this->setError(-1, "I/O Stream reported no-good state while sending!");
+
+    // Prepare control byte
+    fpio_ctlbyte_io cB; cB.byte=1;
+    if (ctrlByte != NULL) {
+        cB.flags=*ctrlByte;
+        cB.flags.bDataPresent = 1;
+    }
     
     // Notify the client that we placed data (Client should clear this on read)
     this->fIO->seekp(this->ofsCtrlByteOut);
-    this->fIO->write("\x01", 1);
+    this->fIO->write(&cB.byte, 1);
     this->fIO->flush();
 
     // If synchronized, wait for data to be written
     if (this->synchronized) {
-        // Wait for input control byte to become 1
-        int iState = this->waitForSync(this->ofsCtrlByteOut, 0, this->syncTimeout);
+        // Wait for output control byte to become 0
+        int iState = this->waitForSync(this->ofsCtrlByteOut, this->syncTimeout, 0, 0x01);
         if (iState<0) return iState;
     }
 
@@ -244,9 +265,12 @@ string FloppyIO::receive() {
 // Receive the input buffer contents
 //
 // @param string   A pointer to a string object that will receive the data
+// @param ctrlByte The extra parameters received from the control byte
 // @return         Returns the length of the data received or -1 if an error occured.
 //
-int FloppyIO::receive(string * ansBuffer) {
+// TODO: String is time-costly, add also the char*/size version
+//
+int FloppyIO::receive(string * ansBuffer, fpio_ctlbyte * ctrlByte) {
     char * dataToReceive = new char[this->szInput];
     int dataLength = this->szInput;
 
@@ -256,7 +280,7 @@ int FloppyIO::receive(string * ansBuffer) {
     // If synchronized, wait for input data
     if (this->synchronized) {
         // Wait for input control byte to become 1
-        int iState = this->waitForSync(this->ofsCtrlByteIn, 1, this->syncTimeout);
+        int iState = this->waitForSync(this->ofsCtrlByteIn, this->syncTimeout, 1, 0x01);
         if (iState<0) return iState;
     }
     
@@ -267,9 +291,17 @@ int FloppyIO::receive(string * ansBuffer) {
     this->fIO->seekg(this->ofsInput, ios_base::beg);
     this->fIO->read(dataToReceive, this->szInput);
 
+    // Prepare the control byte
+    fpio_ctlbyte_io cB; cB.byte=0;
+    if (ctrlByte != NULL) {
+        this->fIO->seekg(this->ofsCtrlByteIn);
+        this->fIO->read(&cB.byte, 1);
+        cB.flags.bDataPresent = 0;
+    }
+
     // Notify the client that we have read the data
     this->fIO->seekp(this->ofsCtrlByteIn);
-    this->fIO->write("\x00", 1);
+    this->fIO->write(&cB.byte, 1);
     this->fIO->flush();
     
     // Copy input data to string object
@@ -278,16 +310,129 @@ int FloppyIO::receive(string * ansBuffer) {
     
 }
 
+//
+// Receive contents and write them on an output stream
+//
+// @param ostream  A pointer to an output stream where the data should be placed.
+// @return         Returns the length of the data received or -1 if an error occured.
+//
+// TODO: Do not rely on null-byte termination: Allow binary file transfer
+//
+int FloppyIO::receive(ostream * stream) {
+    string data;
+    fpio_ctlbyte cB;
+    int readLength, rd;
+
+    // Synchronized? Do proper stream reading..
+    if (this->synchronized) {
+
+        // Read data until end of data flag present on control byte
+        cB.bEndOfData=0;
+        while (cB.bEndOfData==0) {
+
+            // Read and check for errors
+            rd = this->receive(&data, &cB);
+            if (rd<0) {
+                stream->setstate(ostream::failbit);
+                return rd;
+            }
+
+            // Write data
+            stream->write(data.c_str(), data.size());
+            readLength+=rd;
+            
+        }
+
+    // Not synchronized? Read only one block
+    } else {
+
+        // Read one block and check for errors
+        rd = this->receive(&data);
+        if (rd<0) {
+            stream->setstate(ostream::failbit);
+            return rd;
+        }
+
+        // Write data
+        stream->write(data.c_str(), data.size());
+        readLength+=rd;
+        
+    }
+
+    // Flush output
+    stream->flush();
+    
+    return readLength;
+}
+
+//
+// Send the contents of an input stream
+//
+// @param ostream  A pointer to an input stream that will fetch the data from. Non fixed-size streams are also accepted.
+// @return         Returns the length of the data received or -1 if an error occured.
+//
+// TODO: Do not rely on null-byte termination: Allow binary file transfer
+//
+int FloppyIO::send(istream * stream) {
+    string data;
+    fpio_ctlbyte_io cBIO;
+    fpio_ctlbyte * cB;
+    char * inBuffer = new char[this->szOutput+1];
+    int sentLength, rd;
+
+    // Reset byte and get a reference to (zeroed) flags
+    cBIO.byte=0;
+    cB = &cBIO.flags;
+
+    // While stream is good, start processing
+    while (stream->good()) {
+
+        // Zero the input buffer (Plus one null-termination byte)
+        memset(inBuffer, 0, this->szOutput+1);
+
+        // Read data 
+        // TODO: Use this when you solve the binary-sending: rd=stream->tellg();
+        stream->read(inBuffer, this->szOutput);
+
+        // Check status
+        if (stream->eof()) {
+            // EOF? Mark end-of-data on the current block
+            cB->bEndOfData=1;
+
+        } else if (stream->fail()) {
+            // Got fail without getting eof? Something went wrong
+            return this->setError(-5, "Unable to read from input stream");
+            
+        }
+
+        // Cast to string to use the send function
+        // TODO: Time-costly, try to use char*
+        data = inBuffer;
+
+        // Count bytes written
+        // TODO: Use this when you solve the binary-sending: rd= (int) stream->tellg() - rd;
+        rd = this->send(data, cB);
+        if (rd<0) return rd; // Error occured
+        
+        sentLength+=rd;
+
+    }
+    
+    return sentLength;
+}
+
+
 // Wait for synchronization byte to be cleared.
 // This function blocks until the byte at controlByteOffset has
 // the synchronization bit cleared.
 //
 // @param controlByteOffset The offset (from the beginning of file) where to look for the control byte
-// @param state             The state the controlByte must be for this function to exit.
 // @param timeout           The time (in seconds) to wait for a change. 0 Will wait forever
+// @param state             The state the controlByte must be for this function to exit.
+// @param mask              The bit mask to apply on control byte before checking the state
 // @return                  Returns 0 if everything succeeded, -1 if an error occured, -2 if timed out.
 
-int  FloppyIO::waitForSync(int controlByteOffset, char state, int timeout) {
+int  FloppyIO::waitForSync(int controlByteOffset, int timeout, char state, char mask) {
     time_t tExpired = time (NULL) + timeout;
     char cStatusByte;
 
@@ -302,7 +447,7 @@ int  FloppyIO::waitForSync(int controlByteOffset, char state, int timeout) {
         this->fIO->read(&cStatusByte, 1);
 
         // Is the control byte 0? Our job is finished...
-        if (cStatusByte == state) return 0;
+        if ((cStatusByte & mask) == state) return 0;
 
         // Sleep for a few milliseconds to decrease CPU-load
         usleep( 10000 );

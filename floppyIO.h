@@ -77,6 +77,7 @@ using namespace std;
 #define FPIO_ERR_TIMEOUT   -2  // The operation timed out
 #define FPIO_ERR_CREATE    -3  // Unable to freate the floppy file
 #define FPIO_ERR_NOTREADY  -4  // The I/O object is not ready
+#define FPIO_ERR_INPUT     -5  // Error while reading from input (ex. input stream)
 
 //
 // Structure of the synchronization control byte.
@@ -91,9 +92,11 @@ using namespace std;
 // data being exchanged.
 //
 typedef struct fpio_ctlbyte {
-    unsigned short bDataPresent  : 1;
-    unsigned short bReserved     : 7;
+    unsigned short bDataPresent   : 1;
+    unsigned short bEndOfData     : 1;
+    unsigned short bReserved      : 6;
 };
+
 
 // Default floppy disk size (In bytes)
 // 
@@ -120,9 +123,11 @@ public:
     
     // Functions
     void        reset();
-    int         send(string strData);
+    int         send(string strData, fpio_ctlbyte * ctrlByte = NULL);
+    int         send(istream * stream);
     string      receive();
-    int         receive(string * strBuffer);
+    int         receive(string * strBuffer, fpio_ctlbyte * ctrlByte = NULL);
+    int         receive(ostream * stream);
     
     // Topology info
     int         ofsInput;   // Input buffer offset & size
@@ -152,7 +157,7 @@ private:
     int         szFloppy;
 
     // Functions
-    int         waitForSync(int controlByteOffset, char state, int timeout);
+    int         waitForSync(int controlByteOffset, int timeout, char state, char mask = 0xff);
     int         setError(int code, string message);
     
 };
@@ -179,7 +184,7 @@ public:
 
     // Change the message and return my instance
     // (Used for singleton format)
-    FloppyIOException * set(int code, string message) {
+    virtual FloppyIOException * set(int code, string message) {
         this->code = code;
         this->message = message;
         return this;
