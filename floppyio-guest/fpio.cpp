@@ -48,8 +48,8 @@
 // 
 // Created at January 9, 2012, 17:26 PM
 
-#include <cxxabi.h>
-#include <exception>
+#include <stdio.h>
+#include <stdlib.h>
 #include <iostream>
 
 #include "../floppyIO.h";
@@ -68,14 +68,17 @@ void help() {
     printf("Usage: fpio [-hsrcH] [-z] [-R [filename] | -S [filename]] [-t timeout] [floppy]\n");
     printf("Description:\n");
     printf("  floppy        The block device to use for FloppyIO (Default: /dev/fd0).\n");
-    printf("  -c            Use character instead of binary mode (Compatible with the older perl clients)\n");
-    printf("  -H            Hypervisor mode. Use this option if you run FloppyIO from the hypervisor.\n");
+    printf("  -c            Use character instead of binary mode (Compatible with the older\n";
+    printf("                perl clients)\n");
+    printf("  -H            Hypervisor mode. Use this option if you run FloppyIO from the\n");
+    printf("                hypervisor.\n");
     printf("  -z            Zero-out (reset) floppy file.\n");
     printf("  -s            Read data from STDIN and send them.\n");
     printf("  -S filename   Read data from the specified file and send them.\n");
     printf("  -r            Receive data and write them on STDOUT.\n");
     printf("  -R filename   Receive data and save them to the specified file.\n");
-    printf("  -t timeout    The time to wait for synchronization. If not specified, waits for ever.\n");
+    printf("  -t timeout    The time to wait for synchronization. If not specified, waits\n");
+    printf("                for ever.\n");
     printf("  -h            Show this help screen.\n");
 };
 
