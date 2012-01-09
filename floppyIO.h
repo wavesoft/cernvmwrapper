@@ -14,9 +14,11 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+// -------------------------------------------------------------------
 //  File:   FloppyIO.h
 //  Author: Ioannis Charalampidis <ioannis.charalampidis AT cern DOT ch>
 //  License: GNU Lesser General Public License - Version 3.0
+// -------------------------------------------------------------------
 // 
 //  Hypervisor-Virtual machine bi-directional communication
 //  through floppy disk.
@@ -88,13 +90,6 @@ using namespace std;
 #define FPIO_ERR_NOTREADY  -4  // The I/O object is not ready
 #define FPIO_ERR_INPUT     -5  // Error while reading from input (ex. input stream)
 #define FPIO_ERR_ABORTED   -6  // An operation was aborted from the remote end
-
-// Some tuning-up parameters
-
-// How much (microseconds) should we wait on the waitForSync loop.
-// Lower values increases throughput, but also increases CPU load. 
-// A value around 10,000 is usually OK.
-#define FPIO_TUNE_SLEEP    1000
 
 //
 // Structure of the synchronization control byte.

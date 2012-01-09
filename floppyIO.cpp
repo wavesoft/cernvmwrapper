@@ -14,9 +14,11 @@
 // You should have received a copy of the GNU Lesser General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+// -------------------------------------------------------------------
 // File:   FloppyIO.cpp
 // Author: Ioannis Charalampidis <ioannis.charalampidis AT cern DOT ch>
 // License: GNU Lesser General Public License - Version 3.0
+// -------------------------------------------------------------------
 //
 // Hypervisor-Virtual machine bi-directional communication
 // through floppy disk.
@@ -39,6 +41,11 @@
 #include "floppyIO.h"
 #include <typeinfo>
 #include <string.h>
+
+// How much (microseconds) should we wait on the waitForSync loop.
+// Lower values increases throughput, but also increases CPU load. 
+// A value around 10,000 is usually OK.
+#define FPIO_TUNE_SLEEP    1000
 
 // FloppyIO Exception singleton
 static FloppyIOException   __FloppyIOExceptionSingleton;
