@@ -45,7 +45,7 @@
 // How much (microseconds) should we wait on the waitForSync loop.
 // Lower values increases throughput, but also increases CPU load. 
 // A value around 10,000 is usually OK.
-#define FPIO_TUNE_SLEEP    1000
+#define FPIO_TUNE_SLEEP    10000
 
 // FloppyIO Exception singleton
 static FloppyIOException   __FloppyIOExceptionSingleton;
@@ -303,11 +303,21 @@ int FloppyIO::send(char * dataToSend, int szData, fpio_ctlbyte * ctrlByte) {
     
     // Check if something went wrong after writing
     if (!this->fIO->good()) return this->setError(-1, "I/O Stream reported no-good state while sending!");
-    
+
+    // Update control byte by updating the entire floppy (forcing OS to flush)
+    this->fIO->seekg(0);
+    this->fIO->read(DUMMY, this->szFloppy);
+    DUMMY[this->ofsCtrlByteOut] = cB.byte;
+    this->fIO->seekp(0);
+    this->fIO->write(DUMMY, this->szFloppy);
+    this->fIO->flush();
+
+    /*
     // Notify the client that we placed data (Client should clear this on read)
     this->fIO->seekp(this->ofsCtrlByteOut);
     this->fIO->write(&cB.byte, 1);
     this->fIO->flush();
+    */
 
     cerr << "Just sent in sync at " << this->ofsCtrlByteOut << " value= " << (int)cB.byte << "\n";
 
@@ -412,10 +422,20 @@ int FloppyIO::receive(char * dataToReceive, int szData, fpio_ctlbyte * ctrlByte)
     if (!this->binary || !cB.flags.bLengthPrefix)
         dataLength = strlen(dataToReceive);
 
+    // Update control byte by updating the entire floppy (forcing OS to flush)
+    this->fIO->seekg(0);
+    this->fIO->read(DUMMY, this->szFloppy);
+    DUMMY[this->ofsCtrlByteIn] = cB.byte;
+    this->fIO->seekp(0);
+    this->fIO->write(DUMMY, this->szFloppy);
+    this->fIO->flush();
+
+    /*
     // Notify the client that we have read the data
     this->fIO->seekp(this->ofsCtrlByteIn);
     this->fIO->write(&cB.byte, 1);
     this->fIO->flush();
+    */
 
     cerr << "Just sent out sync at " << this->ofsCtrlByteIn << " value= " << (int)cB.byte << "\n";
 
@@ -568,10 +588,6 @@ int  FloppyIO::waitForSync(int controlByteOffset, int timeout, char state, char 
 
         // Check for stream status
         if (!this->fIO->good()) return this->setError(-1, "I/O Stream reported non-good state while waiting for sync!");
-
-        // Read the whole buffer
-        this->fIO->seekg(0, ios_base::beg);
-        this->fIO->read(DUMMY, this->szFloppy);
         
         // Check the synchronization byte
         this->fIO->seekg(controlByteOffset, ios_base::beg);
