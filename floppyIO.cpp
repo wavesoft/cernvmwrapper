@@ -54,6 +54,17 @@ union fpio_ctlbyte_io {
     char         byte;
 };
 
+//
+// An I/O union structure for the data-length prefix
+//
+// This union helps accessing the size int and it's 4-byte representation
+// without needing any memcpy.
+//
+union fpio_datalen_io {
+    int          size;
+    char         bytes[4];
+};
+
 // Advanced Floppy file constructor
 // 
 // This constructor allows you to open a floppy disk image with extra flags.
@@ -148,6 +159,19 @@ FloppyIO::FloppyIO(const char * filename, int flags) {
   this->synchronized = false;
   this->syncTimeout = DEFAULT_FIO_SYNC_TIMEOUT;
   if ((flags & F_SYNCHRONIZED) != 0) this->synchronized=true;
+
+  // Update binary flags
+  this->binary = false;
+  if ((flags & F_BINARY) != 0) {
+
+    // Reduce the I/O buffers by 4 bytes (used by the data-length prefix)
+    this->szInput -= 3;
+    this->szOutput -= 3; // 3 = 4 bytes - 1 null-termination (not used in binary mode)
+
+    // Enable binary transfers
+    this->binary=true;
+    
+  }
   
   // Reset floppy file
   if ((flags & F_NOINIT) == 0) this->reset();
@@ -194,36 +218,50 @@ void FloppyIO::reset() {
 // TODO: String is time-costly, add also the char*/size version
 //
 int FloppyIO::send(string strData, fpio_ctlbyte * ctrlByte) {
+
     // Prepare send buffer
     char * dataToSend = new char[this->szOutput];
     memset(dataToSend, 0, this->szOutput);
-    
-    // Check for ready state
-    if (!this->ready()) return this->setError(-4, "Stream is not ready!");
 
     // Initialize variables
     int szData = strData.length();
-    int szPad = 0;
-    int bytesSent = szData;
     
     // Copy the first szInput bytes
     if (szData > this->szOutput-1) { // -1 for the null-termination
         // Data more than the pad size? Trim...
         strData.copy(dataToSend, this->szOutput-1, 0);
-        bytesSent = this->szOutput-1;
+        szData = this->szOutput-1;
+        
     } else {
         // Else, copy the string to send buffer
         strData.copy(dataToSend, szData, 0);
     }
+
+    // And send the data
+    this->send(dataToSend, szData, ctrlByte);
+}
+
+// Send data to the floppy image I/O using char buffer
+//
+// @param data      A pointer to the data buffer to send
+// @param dataLen   The size of the input buffer
+// @param ctrlByte  The extra parameters you want to write on the control byte
+// @return          The number of bytes sent if successful or -1 if an error occured.
+//
+int FloppyIO::send(char * dataToSend, int szData, fpio_ctlbyte * ctrlByte) {
+    
+    // Check for ready state
+    if (!this->ready()) return this->setError(-4, "Stream is not ready!");
+
+    // Initialize variables
+    int szPad = 0;
+    int bytesSent = szData;
+
+    // Wrap overflow
+    if (szData > this->szOutput-1)
+        szData = this->szOutput-1; // -1 for the null-termination
     
     // Check for stream status
-    if (!this->fIO->good()) return this->setError(-1, "I/O Stream reported no-good state while sending!");
-    
-    // Write the data to file
-    this->fIO->seekp(this->ofsOutput);
-    this->fIO->write(dataToSend, this->szOutput);
-    
-    // Check if something went wrong after writing
     if (!this->fIO->good()) return this->setError(-1, "I/O Stream reported no-good state while sending!");
 
     // Prepare control byte
@@ -232,6 +270,24 @@ int FloppyIO::send(string strData, fpio_ctlbyte * ctrlByte) {
         cB.flags=*ctrlByte;
         cB.flags.bDataPresent = 1;
     }
+    
+    // Move pointer to output
+    this->fIO->seekp(this->ofsOutput);
+
+    // Check if we should prefix the data
+    if (this->binary) {
+        fpio_datalen_io dL;
+        cB.flags.bLengthPrefix = 1;    // Update control byte : set 'we have length prefix'
+        dL.size = szData;              // Set the data length int
+        this->fIO->write(dL.bytes, 4); // And send the 4-byte representation
+        cout << "Binary mode selected. Prefixing: " << dL.size << "\n";
+    }
+
+    // Send the data
+    this->fIO->write(dataToSend, szData);
+    
+    // Check if something went wrong after writing
+    if (!this->fIO->good()) return this->setError(-1, "I/O Stream reported no-good state while sending!");
     
     // Notify the client that we placed data (Client should clear this on read)
     this->fIO->seekp(this->ofsCtrlByteOut);
@@ -273,6 +329,26 @@ string FloppyIO::receive() {
 int FloppyIO::receive(string * ansBuffer, fpio_ctlbyte * ctrlByte) {
     char * dataToReceive = new char[this->szInput];
     int dataLength = this->szInput;
+    int bLen;
+
+    bLen = this->receive(dataToReceive, dataLength, ctrlByte);
+    if (bLen<0) return bLen;
+
+    ansBuffer->assign(dataToReceive, bLen);
+    return bLen;
+}
+
+//
+// Receive the input buffer contents using char buffers
+//
+// @param dataToReceive     A pointer to a char buffer that will receive the data
+// @param szData            The size of the target buffer
+// @param ctrlByte          The extra parameters received from the control byte
+// @return                  Returns the length of the data received or -1 if an error occured.
+//
+//
+int FloppyIO::receive(char * dataToReceive, int szData, fpio_ctlbyte * ctrlByte) {
+    int dataLength = szData;
 
     // Check for ready state
     if (!this->ready()) return this->setError(-4, "Stream is not ready!");
@@ -286,27 +362,44 @@ int FloppyIO::receive(string * ansBuffer, fpio_ctlbyte * ctrlByte) {
     
     // Check for stream status
     if (!this->fIO->good()) return this->setError(-1, "I/O Stream reported no-good state while receiving!");
-    
-    // Read the input bytes from FD
-    this->fIO->seekg(this->ofsInput, ios_base::beg);
-    this->fIO->read(dataToReceive, this->szInput);
 
     // Prepare the control byte
     fpio_ctlbyte_io cB; cB.byte=0;
-    if (ctrlByte != NULL) {
-        this->fIO->seekg(this->ofsCtrlByteIn);
-        this->fIO->read(&cB.byte, 1);
-        cB.flags.bDataPresent = 0;
+    this->fIO->seekg(this->ofsCtrlByteIn);
+    this->fIO->read(&cB.byte, 1);
+
+    // Update control byte if we have it specified
+    if (ctrlByte != NULL) *ctrlByte = cB.flags;
+
+    cB.flags.bDataPresent = 0;      // We need to say we read the data (when we are done)
+    
+    // Go to the input buffer
+    this->fIO->seekg(this->ofsInput, ios_base::beg);
+
+    // If we are using binary mode and we have data prefix, read it
+    if (this->binary && (cB.flags.bLengthPrefix == 1)) {
+        fpio_datalen_io dL;
+        this->fIO->read(dL.bytes, 4);  // Read the 4-byte representation
+        cout << "Binary mode detected. Read: " << dL.size << "\n";
+        dataLength = dL.size;
+        if (dataLength > this->szInput) 
+            dataLength = this->szInput; // Protect from overflows
     }
+
+    // Now read the appropriate data length    
+    this->fIO->read(dataToReceive, dataLength);
+
+    // Locate the end of the char buffer using null-termination if we are not using binary mode
+    if (!this->binary || !cB.flags.bLengthPrefix)
+        dataLength = strlen(dataToReceive);
 
     // Notify the client that we have read the data
     this->fIO->seekp(this->ofsCtrlByteIn);
     this->fIO->write(&cB.byte, 1);
     this->fIO->flush();
-    
-    // Copy input data to string object
-    *ansBuffer = dataToReceive;
-    return ansBuffer->length();
+
+    // Return the data length
+    return dataLength;
     
 }
 

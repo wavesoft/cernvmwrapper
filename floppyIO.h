@@ -69,6 +69,11 @@ using namespace std;
 // (Flag used by the FloppyIO constructor)
 #define F_CLIENT 16
 
+// Enable binary transfers.
+// This flag enables binary transfers by prefixing the data with a 4-byte data-length
+// number, rather than relying on the null-termination byte.
+// (Flag used by the FloppyIO constructor)
+#define F_BINARY 32
 //
 // Error code constants
 //
@@ -94,7 +99,8 @@ using namespace std;
 typedef struct fpio_ctlbyte {
     unsigned short bDataPresent   : 1;
     unsigned short bEndOfData     : 1;
-    unsigned short bReserved      : 6;
+    unsigned short bLengthPrefix  : 1;
+    unsigned short bReserved      : 5;
 };
 
 
@@ -124,8 +130,10 @@ public:
     // Functions
     void        reset();
     int         send(string strData, fpio_ctlbyte * ctrlByte = NULL);
+    int         send(char * data, int dataLen, fpio_ctlbyte * ctrlByte = NULL);
     int         send(istream * stream);
     string      receive();
+    int         receive(char * data, int dataLen, fpio_ctlbyte * ctrlByte = NULL);
     int         receive(string * strBuffer, fpio_ctlbyte * ctrlByte = NULL);
     int         receive(ostream * stream);
     
@@ -137,7 +145,7 @@ public:
     
     int         ofsCtrlByteIn;  // Control byte offset for input
     int         ofsCtrlByteOut; // Control byte offset for output
-
+    
     // Synchronization stuff
     bool        synchronized;   // The read/writes are synchronized
     int         syncTimeout;    // For how long should we wait
@@ -155,6 +163,10 @@ private:
     // Floppy Info
     fstream *   fIO;
     int         szFloppy;
+
+    // Use binary data transfer
+    // (Cannot be changed during run-time)
+    bool        binary;
 
     // Functions
     int         waitForSync(int controlByteOffset, int timeout, char state, char mask = 0xff);
