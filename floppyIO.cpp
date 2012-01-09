@@ -50,6 +50,9 @@
 // FloppyIO Exception singleton
 static FloppyIOException   __FloppyIOExceptionSingleton;
 
+// A dummy, reusable big buffer used for forcing OS to sync
+char DUMMY[DEFAULT_FIO_FLOPPY_SIZE];
+
 //
 // An I/O union structure for fpio_ctrlbyte
 //
@@ -565,6 +568,10 @@ int  FloppyIO::waitForSync(int controlByteOffset, int timeout, char state, char 
 
         // Check for stream status
         if (!this->fIO->good()) return this->setError(-1, "I/O Stream reported non-good state while waiting for sync!");
+
+        // Read the whole buffer
+        this->fIO->seekg(0, ios_base::beg);
+        this->fIO->read(DUMMY, this->szFloppy);
         
         // Check the synchronization byte
         this->fIO->seekg(controlByteOffset, ios_base::beg);
