@@ -214,9 +214,9 @@ void FloppyIO::reset() {
   
   // Reset to the beginnig of file and fill with zeroes
   this->fIO->seekp(0);
-  char * buffer = new char[this->szFloppy+1];
-  memset(buffer, 0, this->szFloppy+1);
-  this->fIO->write(buffer, this->szFloppy+1);
+  char * buffer = new char[this->szFloppy];
+  memset(buffer, 0, this->szFloppy);
+  this->fIO->write(buffer, this->szFloppy);
   delete[] buffer;      
 }
 

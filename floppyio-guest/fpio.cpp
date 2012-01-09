@@ -68,7 +68,7 @@ void help() {
     printf("Usage: fpio [-hsrcH] [-z] [-R [filename] | -S [filename]] [-t timeout] [floppy]\n");
     printf("Description:\n");
     printf("  floppy        The block device to use for FloppyIO (Default: /dev/fd0).\n");
-    printf("  -c            Use character instead of binary mode (Compatible with the older\n";
+    printf("  -c            Use character instead of binary mode (Compatible with the older\n");
     printf("                perl clients)\n");
     printf("  -H            Hypervisor mode. Use this option if you run FloppyIO from the\n");
     printf("                hypervisor.\n");
